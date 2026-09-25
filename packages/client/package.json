@@ -1,0 +1,37 @@
+{
+  "name": "@otp-guard/client",
+  "version": "0.1.0",
+  "description": "Routes Supabase phone OTP requests through the otp-guard gateway.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "keywords": [
+    "supabase",
+    "otp",
+    "sms",
+    "sms-pumping",
+    "auth",
+    "rate-limit"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

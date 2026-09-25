@@ -1,0 +1,31 @@
+{
+  "name": "supabase-otp-guard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Abuse protection for Supabase phone OTP: one-time send permits, atomic quotas, rate limits and risk blocks.",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "npm run test:sql && npm run test:functions && npm run test:client",
+    "test:sql": "node --test 'tests/sql/*.test.mjs'",
+    "test:functions": "node --test 'tests/functions/*.test.ts'",
+    "test:client": "node --test 'tests/client/*.test.ts'",
+    "build": "npm run build --workspace @otp-guard/client",
+    "verify": "node --env-file-if-exists=.env.verify scripts/verify.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "smoke:deno": "node scripts/smoke-deno.mjs",
+    "e2e:mobile": "node --env-file-if-exists=.env.verify scripts/e2e-mobile.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "embedded-postgres": "^18.4.0-beta.17",
+    "pg": "^8.23.0",
+    "typescript": "^7.0.2"
+  }
+}

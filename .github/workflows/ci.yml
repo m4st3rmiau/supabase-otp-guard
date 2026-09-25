@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Tests and typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      # SQL tests start a throwaway PostgreSQL through embedded-postgres.
+      - run: npm test
+      - name: Client package builds and packs
+        run: |
+          npm run build
+          npm pack --dry-run --workspace @otp-guard/client
+
+  deno:
+    name: Edge Functions (Deno)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check entrypoints
+        run: >
+          deno check --no-config
+          supabase/functions/otp-gateway/index.ts
+          supabase/functions/send-sms-hook/index.ts
+          supabase/functions/before-user-created-hook/index.ts
+      - name: Boot and fail closed without a database
+        run: node scripts/smoke-deno.mjs

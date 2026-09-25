@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "supabase/functions/**/handler.ts",
+    "supabase/functions/**/providers/*.ts",
+    "supabase/functions/**/extensions.ts",
+    "supabase/functions/_shared/otp-guard/decision.ts",
+    "supabase/functions/_shared/otp-guard/messages.ts",
+    "supabase/functions/_shared/otp-guard/log.ts",
+    "supabase/functions/_shared/otp-guard/webhook.ts",
+    "supabase/functions/_shared/otp-guard/types.ts",
+    "packages/client/src",
+    "tests/**/*.ts"
+  ]
+}
