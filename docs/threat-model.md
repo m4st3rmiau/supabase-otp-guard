@@ -1,78 +1,63 @@
-# Threat model
+# Security model
 
-## Covered
+What otp-guard protects you from, what it does not, and what it takes for granted. Read it before you rely on it.
 
-| Attack | Defense |
+## In short
+
+otp-guard makes abusing your phone login **slow, visible and capped**. Every code needs a permit, every permit is limited, and the whole project has a spend ceiling. It does not make abuse impossible: someone with real phones, real numbers and many clean IP addresses looks exactly like your users.
+
+## What it protects against
+
+| Attack | How it is stopped |
 |---|---|
-| Direct calls to `/auth/v1/otp` bypassing your app | No permit, no send |
-| SMS pumping to premium destinations | Destination allowlist, before an account exists |
-| Rotating destinations from one IP | `origin.phones_*`, then risk block |
-| Rotating IPs (VPN) from one installation | Device limits and `device.pending_phones` |
-| Flooding one victim's phone | `phone.*` limits |
-| One account fanning out to many numbers | `account.phones_per_day` |
-| Bursts of concurrent requests | Advisory locks: limits are exact |
-| Mass signups creating junk accounts | `signup.*` limits in the Before User Created hook |
-| Everything else failing | `global.*` spend ceiling |
-| Browser automation from web | Turnstile |
-| Forged hook calls | Standard Webhooks signature with 5-minute tolerance |
+| Calling Supabase directly, skipping your app | No permit, no code |
+| Sending codes to expensive countries (SMS pumping) | Country allowlist, checked before an account exists |
+| One IP address cycling through numbers | Per-origin limits, then an automatic block |
+| One installation behind a rotating VPN | Device limits, and the unverified-numbers rule |
+| Flooding one person's phone | Per-phone limits |
+| One account sending to many numbers | Per-account number limit |
+| Bursts of simultaneous requests | Database locks: limits hold exactly, even under load |
+| Mass signups creating junk accounts | Signup limits in the Before User Created hook |
+| Everything else failing | The project-wide spend ceiling |
+| Bots in a browser | Cloudflare Turnstile on the web |
+| Fake calls to your hooks | Signature check, with a 5-minute window |
 
-## Not covered
+## What it does not protect against
 
-**Scripts posing as your mobile app.** The platform header is set by the client. A
-browser cannot fake `mobile`, because it always sends `Origin` on this request, but a
-script can. Such requests skip Turnstile and are held only by the rate limits.
-Platform attestation (App Attest, Play Integrity) is the fix and is not implemented
-yet. If you have no native app, set `OTP_GUARD_MOBILE=off`.
+> [!WARNING]
+> **Scripts pretending to be your mobile app.** The app tells the gateway which platform it is. A browser cannot pretend to be the mobile app, but a script can, and then it skips Turnstile and is held only by the rate limits. The real fix is platform attestation (App Attest, Play Integrity), which is not built yet. **If you have no native app, set `OTP_GUARD_MOBILE=off`.**
 
-**Captcha on session routes.** `reauthenticate()` and MFA phone challenges skip
-Turnstile, because supabase-js sends no token for them. They only text the signed-in
-user's own number and are bound by the permit limits, so the exposure is an attacker
-with a valid session spending that account's phone and account quotas.
+**Fake device IDs.** A client that invents a new device ID on every request makes the device rules useless. The IP, phone and project limits still apply. The device ID catches the common case, one real installation behind changing IPs, and nothing more.
 
-**Forged device IDs.** A client that sends a fresh UUID with every request makes
-device rules useless. Origin, phone and global limits still apply. The device ID
-catches the common case, a real installation behind changing IPs, and nothing more.
+**No captcha on signed-in requests.** `reauthenticate()` and MFA phone challenges skip Turnstile, because supabase-js sends no token for them. They only text the signed-in user's own number and still need a permit, so the risk is limited to someone with a valid session using up that account's quota.
 
-**Large residential proxy pools with real numbers.** An attacker with many clean IPs,
-fresh device IDs and numbers that do verify looks like real users. The global ceiling
-limits the damage; nothing here prevents it.
+**Large proxy networks with real numbers.** Many clean IP addresses, fresh device IDs and numbers that actually verify look like real users. The spend ceiling limits the damage; nothing here prevents it.
 
-**Phone number enumeration.** Rejection messages differ by reason, and Auth's own
-responses can reveal whether a number is registered.
+**Finding out which numbers are registered.** Different refusals return different messages, and Supabase's own responses can reveal whether a number has an account.
 
-**Verification brute force.** Auth verifies codes and applies its own limits. otp-guard
-protects issuing codes, not checking them.
+**Guessing codes.** Supabase checks codes and applies its own limits. otp-guard protects sending codes, not checking them.
 
-**Delivery analytics.** otp-guard does not know whether a message arrived or whether
-the user verified, except through `auth.users.phone_confirmed_at` for the pending rule.
-Low conversion by prefix is a strong pumping signal; watch it in your provider.
+**Delivery and conversion.** otp-guard does not know whether a message arrived or whether the user completed login. Few logins for many codes sent to one prefix is a strong pumping signal: watch for it in your provider's dashboard.
 
-## Assumptions
+## What it takes for granted
 
-These hold on Supabase today. `scripts/verify.mjs` checks the ones that can be checked
-from outside.
+These are true on Supabase today. `npm run verify` checks the ones that can be checked from outside.
 
-1. **The gateway sees the real client IP in the first `X-Forwarded-For` entry**, and a
-   client cannot inject its own. Checked by `verify.mjs`. If this breaks, every
-   IP-based limit is bypassable.
-2. **The Send SMS hook payload has no client IP.** Hence the permit. If Auth ever adds
-   one, nothing breaks.
-3. **Auth hooks are signed** with the secret you configured. Auth relays a hook error to
-   the client only when it arrives as HTTP 200 with `{"error": {"http_code", "message"}}`;
-   a 4xx becomes a generic 500 and a 429/503 is retried. Both hooks always answer 200, so
-   refusals reach the user and are never retried.
-4. **`auth.users.phone` is unique and stored without `+`**, used by the pending rule.
+1. **The gateway sees the caller's real IP address, and the caller cannot fake it.** Checked by `verify`. If this ever breaks, every IP-based limit can be bypassed.
+2. **The Send SMS hook is not told the caller's IP address.** That is why the permit exists. If Supabase ever adds it, nothing breaks.
+3. **Hook calls are signed** with the secret you configured, and Supabase only passes a hook's error on to your app when the hook answers HTTP 200 with the error in the body. Both hooks always do.
+4. **Supabase stores each phone number once, without the `+`.** The unverified-numbers rule relies on it.
 
-## Data kept
+## Data it keeps
 
-| Table | Contents | Retention |
+| What | Contains | Kept for |
 |---|---|---|
-| `permits`, `sends` | Phone, IP network, device ID | 24 h (`retention.hours`) |
-| `device_phones` | Device ID, phone | `device.pending_lookback_days` |
-| `signup_attempts` | IP network, device ID | 24 h |
-| `risk_events` | IP, device ID, SHA-256 of target, reason | 24 h |
-| `risk_subjects`, `risk_reviews` | IP or device, evidence counts, reviewer | Until you delete them |
+| Permits and sends | Phone number, IP network, device ID | 24 hours |
+| Numbers per device | Device ID, phone number | 90 days by default (`device.pending_lookback_days`) |
+| Signup attempts | IP network, device ID | 24 hours |
+| Risk events | IP, device ID, a hash of the number, the reason | 24 hours |
+| Flagged subjects and reviews | IP or device, evidence counts, who reviewed | Until you delete them |
 
-Codes are never stored or logged. Logs mask phones to their last four digits. Check
-the retention against your privacy obligations; phones and IPs are personal data in
-most jurisdictions.
+Codes are never stored or logged, and logs show only the last four digits of a phone number. Phone numbers and IP addresses are personal data in most countries, so check these periods against your privacy obligations.
+
+Found a way around any of this? See [SECURITY.md](../SECURITY.md) to report it privately.

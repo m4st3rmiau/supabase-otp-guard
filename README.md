@@ -1,134 +1,119 @@
+<div align="center">
+
 # supabase-otp-guard
 
-Abuse protection for Supabase phone OTP.
+**Stop SMS pumping on Supabase phone login.**
 
-**No permit → no SMS → no bill.**
+No permit → no SMS → no bill.
 
-SMS pumping works because every request to `signInWithOtp` can make your provider send
-a paid message. otp-guard puts a gate in front of that: a message only goes out if a
-one-time permit was issued for it, and a permit is only issued after rate limits,
-destination rules and risk checks pass.
+[![CI](https://github.com/m4st3rmiau/supabase-otp-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/m4st3rmiau/supabase-otp-guard/actions/workflows/ci.yml)
+![Status](https://img.shields.io/badge/status-0.1%20pre--release-orange)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
+[Quickstart](docs/quickstart.md) · [How it works](docs/architecture.md) · [Documentation](docs/README.md)
+
+</div>
+
+---
+
+## The problem
+
+Phone login is an open door to your SMS bill. Anyone can call `signInWithOtp` with any number, and every call makes your provider send a paid message.
+
+Attackers use this for **SMS pumping**: they send thousands of codes to numbers they get paid for, and you pay for every one. Supabase Auth sends whatever it is asked to send.
+
+## The fix
+
+otp-guard puts a checkpoint in front of every code. Your app asks the **gateway**, the gateway checks the request and issues a **one-time permit**, and only then does Supabase send the code. At the other end, the Send SMS hook refuses anything that arrives without a permit.
+
+```mermaid
+flowchart LR
+    app([Your app]) --> gw[otp-gateway<br/>checks the request]
+    gw -- refused --> no1[No code]
+    gw -- passes --> auth[Supabase Auth]
+    attacker([Attacker]) -. skips your app .-> auth
+    auth --> hook{Send SMS hook<br/>has a permit?}
+    hook -- yes --> sms([Code sent])
+    hook -- no --> no2[Nothing sent]
 ```
-Without otp-guard                     With otp-guard
 
-App ──► Supabase Auth ──► Provider    App ──► otp-gateway ──► Supabase Auth ──► Send SMS hook ──► Provider
-                           $$$                 │  IP, device, phone,                  │
-                                               │  destination, captcha                │  consume permit,
-                                               ▼                                      ▼  reserve quota
-                                         one-time permit ─────────────────────► no permit = no send
-```
+Calling Supabase directly, skipping your app, gets an attacker nothing.
 
-> **Status: 0.1, pre-release.** Tested against a real PostgreSQL, in Node and in Deno,
-> and deployed on a live Supabase project, where `scripts/verify.mjs` passes and the
-> core claim holds: a direct call to `/auth/v1/otp` without a permit is refused by the
-> hook and nothing is sent. Delivery through Bird from this repository has not been
-> confirmed yet (the same provider code runs in production elsewhere).
-> `@otp-guard/client` is not on npm yet; copy `packages/client/src/index.ts` meanwhile.
-> Try it on a staging project first.
+## What you get
 
-This is a **template repository**, not a package you install and forget. You copy the
-SQL and the Edge Functions into your project, read them, and tune them. Only the small
-client helper is published to npm.
+| | |
+|---|---|
+| **One-time permits** | A code only goes out for a request that passed your checks. |
+| **Country allowlist** | Codes only go to countries you choose, before an account is even created. |
+| **Rate limits** | Per phone, account, device and IP address. |
+| **Rotation detection** | One device or IP cycling through numbers gets cut off. |
+| **Spend ceiling** | A hard cap on messages per minute, hour and day for the whole project. |
+| **Automatic blocks** | Repeat offenders are blocked, with a manual release that keeps the history. |
+| **Web captcha** | Cloudflare Turnstile, checked by the gateway. |
 
-## What it does
+It works with `signInWithOtp`, `signUp`, `resend`, phone changes, `reauthenticate` and MFA phone challenges, from the web and from React Native / Expo. Your app code does not change.
 
-- **One-time send permits.** The Send SMS hook refuses to deliver without a permit from
-  the gateway. Calling `/auth/v1/otp` directly gets the attacker nothing.
-- **Atomic quotas.** Per phone, per account, per device and a project-wide spend
-  ceiling, reserved in one transaction so concurrent requests cannot overshoot.
-- **Rate limits by origin and device.** IPv4 host or IPv6 /64, plus an installation ID.
-- **Destination rotation detection.** An origin or device cycling through numbers is
-  refused new ones. A device that received codes for two numbers that never verified
-  cannot request a third.
-- **Destination allowlist and blocklist.** Nothing is sent to a country you did not
-  enable, before Auth even creates the account.
-- **Risk events and automatic blocks.** Repeated rejections flag and then block the IP
-  or device, with a manual release that keeps the history.
-- **Signup limits** in the Before User Created hook, with a slot for your own rules.
-- **Turnstile for web**, verified by the gateway.
+## Get started
 
-It was extracted from a production app after real SMS pumping incidents. The code here
-is a clean rewrite of that system with the thresholds made configurable; the `strict`
-preset keeps the values that ran in production.
+It takes about 20 minutes. The [Quickstart](docs/quickstart.md) walks through every step.
 
-## What it does not do
-
-Read [docs/threat-model.md](docs/threat-model.md) before relying on it. In short:
-
-- It does not stop a determined attacker using real devices, real numbers and many
-  residential IPs. It makes each attempt cost them, and caps what they can cost you.
-- The device ID is client-supplied. It catches lazy rotation, not a forged ID per request.
-- Native apps have no attestation yet (App Attest / Play Integrity). A script can claim
-  to be your mobile app and skip the web captcha. Web-only projects should turn the
-  mobile path off.
-- It does not protect against phone number enumeration.
-- It does not measure delivery or conversion. Your provider's dashboard is still the
-  place to spot a pumping pattern it missed.
-
-## Quickstart
-
-```bash
-# 1. Copy into your project
-cp supabase/migrations/20260926000000_otp_guard.sql <your-project>/supabase/migrations/
-cp -r supabase/functions/_shared/otp-guard <your-project>/supabase/functions/_shared/
-cp -r supabase/functions/{otp-gateway,send-sms-hook,before-user-created-hook} <your-project>/supabase/functions/
-
-# 2. Apply and choose your countries
-supabase db push
-# then, in the SQL editor:
-#   INSERT INTO otp_guard.allowed_destinations (prefix, digits, label) VALUES ('52', 12, 'Mexico');
-
-# 3. Deploy
-supabase functions deploy otp-gateway --no-verify-jwt
-supabase functions deploy send-sms-hook --no-verify-jwt
-supabase functions deploy before-user-created-hook --no-verify-jwt
-
-# 4. Route the client through the gateway
-npm install @otp-guard/client          # or copy packages/client/src/index.ts until it is published
-```
+1. **Copy** the migration and three Edge Functions into your Supabase project.
+2. **Apply** the migration and choose the countries you serve.
+3. **Deploy** the functions and turn on the two Auth hooks.
+4. **Connect** your app:
 
 ```ts
 import { createClient } from "@supabase/supabase-js"
 import { browserDeviceId, createOtpGuardFetch } from "@otp-guard/client"
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   global: {
     fetch: createOtpGuardFetch({ supabaseUrl: SUPABASE_URL, platform: "web", getDeviceId: browserDeviceId() }),
   },
 })
-// signInWithOtp, signUp, resend, updateUser({ phone }), reauthenticate and MFA phone
-// challenges work exactly as before.
 ```
 
-Then enable both Auth hooks, set the secrets and run `npm run verify`. The full
-walkthrough is in [docs/quickstart.md](docs/quickstart.md).
+5. **Verify** it with `npm run verify`, which checks your project without sending a single SMS.
 
-## Docs
+> [!NOTE]
+> This is a **template repository**. You copy the code into your project, read it and tune it; it is not a package that updates itself. Only the small client helper is meant for npm, and until it is published you can copy its single file.
 
-| | |
+## Is it right for you?
+
+**A good fit if** you use Supabase phone login, pay for SMS or WhatsApp codes, and want a real limit on what abuse can cost you.
+
+**Know its limits.** otp-guard makes abuse expensive and caps the damage, but it cannot tell a determined attacker with real phones and real numbers from a real user. It does not verify that requests come from your genuine mobile app (no App Attest or Play Integrity yet), and it does not stop phone number enumeration. The [security model](docs/threat-model.md) covers what it protects against and what it does not.
+
+## Status
+
+> [!IMPORTANT]
+> **0.1, pre-release.** The code is tested against a real PostgreSQL, in Node and in Deno, and it has been deployed on a live Supabase project, where the core promise holds: a request without a permit is refused and nothing is sent. Delivery through Bird from this repository has not been confirmed yet. Try it on a staging project first.
+
+It started as the protection of a production app that was hit by real SMS pumping. This repository is a clean rewrite of that system with every threshold made configurable; the `strict` preset keeps the values that ran in production.
+
+## Documentation
+
+| Guide | |
 |---|---|
-| [Quickstart](docs/quickstart.md) | Install, configure, deploy, verify |
-| [Architecture](docs/architecture.md) | The request flow, the permit, locks and failure modes |
-| [Configuration](docs/configuration.md) | Every setting, destinations, environment variables |
-| [Tuning](docs/tuning.md) | Choosing thresholds for your traffic |
-| [Threat model](docs/threat-model.md) | What is covered, what is not, and why |
-| [Operations](docs/operations.md) | Monitoring, incidents, releasing a block |
+| [Quickstart](docs/quickstart.md) | Install, deploy and verify, step by step |
+| [How it works](docs/architecture.md) | The request flow and why the permit matters |
+| [Configuration](docs/configuration.md) | Presets, countries, limits, environment variables |
+| [Tuning](docs/tuning.md) | Choosing limits that fit your traffic |
+| [Operations](docs/operations.md) | Monitoring, incidents and releasing a block |
+| [Security model](docs/threat-model.md) | What is covered, what is not, and why |
+| [Troubleshooting](docs/troubleshooting.md) | Common errors and what they mean |
 
-## Development
+## Contributing
 
 ```bash
 npm install
-npm test            # SQL (embedded Postgres), Edge Function handlers, client
+npm test            # database, Edge Functions and client
 npm run typecheck
-npm run smoke:deno  # boots each function in Deno; needs deno on PATH
+npm run smoke:deno  # starts each function in Deno (needs deno installed)
 ```
 
-CI runs all three, plus `deno check` on the entrypoints, on every push and pull request.
-
-The SQL tests start a throwaway PostgreSQL; nothing connects to a real project and no
-SMS is sent.
+The database tests run on a throwaway PostgreSQL: nothing touches a real project and no SMS is sent. CI runs everything on every push and pull request. To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## License
 
-MIT
+[MIT](LICENSE)

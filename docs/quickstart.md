@@ -1,10 +1,22 @@
 # Quickstart
 
-About 20 minutes. You need the Supabase CLI linked to your project and a Bird account.
-The gateway works with any provider; Bird is the only adapter shipped today (see
-[Configuration → Providers](configuration.md#providers)).
+Install otp-guard on your Supabase project in about 20 minutes. By the end, every phone code your project sends will need a permit, and you will have checked it yourself.
 
-## 1. Copy the files
+> [!TIP]
+> Do it on a staging project first. When everything passes there, repeat the same steps on production.
+
+## Before you start
+
+- [ ] A Supabase project and the [Supabase CLI](https://supabase.com/docs/guides/cli), linked with `supabase link`
+- [ ] An SMS provider account. [Bird](https://bird.com) is the one supported today
+- [ ] For web apps: a [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/) widget
+- [ ] This repository, cloned next to your project
+
+---
+
+## Step 1 · Copy the files
+
+From this repository, copy the migration and the three Edge Functions into your project:
 
 ```bash
 cp supabase/migrations/20260926000000_otp_guard.sql <project>/supabase/migrations/
@@ -13,32 +25,32 @@ cp -r supabase/functions/otp-gateway supabase/functions/send-sms-hook \
       supabase/functions/before-user-created-hook <project>/supabase/functions/
 ```
 
-Rename the migration if your project has later ones: Supabase applies them in filename
-order. If you already have a `before-user-created-hook`, merge your logic into
-`before-user-created-hook/extensions.ts` instead of keeping two hooks.
+> [!NOTE]
+> Supabase applies migrations in filename order. If your project already has later migrations, rename the file with a newer date. If you already have a Before User Created hook, move your rules into `before-user-created-hook/extensions.ts`: a project can only have one.
 
-## 2. Apply the migration
+## Step 2 · Create the database pieces
+
+Review what will be applied, then apply it:
 
 ```bash
-supabase db push --dry-run   # review
+supabase db push --dry-run
 supabase db push
 ```
 
-It installs the `strict` preset. Now pick where codes may go. **Until you do, every
-phone is refused**:
+Then choose the countries that may receive codes. **Until you add one, every phone number is refused.** In the SQL editor:
 
 ```sql
-INSERT INTO otp_guard.allowed_destinations (prefix, digits, label)
-VALUES ('52', 12, 'Mexico');   -- +52 followed by 10 digits
+-- +52 followed by 10 digits
+INSERT INTO otp_guard.allowed_destinations (prefix, digits, label) VALUES ('52', 12, 'Mexico');
 ```
 
-For higher traffic, start from another preset and read [tuning.md](tuning.md):
+The migration starts with the `strict` preset, which suits a small app. If you expect a lot of traffic, pick another one now and read [Tuning](tuning.md) later:
 
 ```sql
 SELECT otp_guard.apply_preset('balanced');
 ```
 
-## 3. Deploy the functions
+## Step 3 · Deploy the functions
 
 ```bash
 supabase functions deploy otp-gateway --no-verify-jwt
@@ -46,143 +58,143 @@ supabase functions deploy send-sms-hook --no-verify-jwt
 supabase functions deploy before-user-created-hook --no-verify-jwt
 ```
 
-`--no-verify-jwt` is intentional. The gateway is public and does its own checks. The
-hooks are authenticated by Auth's Standard Webhooks signature, verified in code.
+`--no-verify-jwt` is intentional. The gateway is a public endpoint that runs its own checks, and the hooks verify the signature Supabase Auth puts on every hook call.
 
-Or in `supabase/config.toml`:
+<details>
+<summary>Prefer <code>config.toml</code>?</summary>
 
 ```toml
 [functions.otp-gateway]
 verify_jwt = false
+
 [functions.send-sms-hook]
 verify_jwt = false
+
 [functions.before-user-created-hook]
 verify_jwt = false
 ```
 
-## 4. Enable the Auth hooks
+</details>
 
-Dashboard → Authentication → Hooks:
+## Step 4 · Turn on the Auth settings
 
-- **Send SMS hook** → HTTPS → `https://<ref>.supabase.co/functions/v1/send-sms-hook`.
-  Generate the secret and copy it.
-- **Before User Created hook** → HTTPS →
-  `https://<ref>.supabase.co/functions/v1/before-user-created-hook`. Generate and copy.
+In the Supabase dashboard, under **Authentication**:
 
-Or in `config.toml` (then `supabase config push`). The dashboard route above is the one
-verified end to end:
+1. **Sign In / Providers → Phone → Enable.** If the dashboard asks for an SMS provider, choose any and leave placeholder values: with the hook enabled, Auth hands every message to the hook instead.
+2. **Hooks → Send SMS hook → HTTPS**, pointing to
+   `https://<project-ref>.supabase.co/functions/v1/send-sms-hook`.
+   Click **Generate secret** and keep it for step 5.
+3. **Hooks → Before User Created hook → HTTPS**, pointing to
+   `https://<project-ref>.supabase.co/functions/v1/before-user-created-hook`.
+   Generate and keep this secret too.
+4. **Attack Protection → CAPTCHA** must stay **off**. The gateway checks Turnstile itself; a second check would reject every web login.
+
+<details>
+<summary>Prefer <code>config.toml</code>?</summary>
+
+Then run `supabase config push`. The dashboard route above is the one that has been verified end to end.
 
 ```toml
 [auth.hook.send_sms]
 enabled = true
-uri = "https://<ref>.supabase.co/functions/v1/send-sms-hook"
+uri = "https://<project-ref>.supabase.co/functions/v1/send-sms-hook"
 secrets = "env(SEND_SMS_HOOK_SECRET)"
 
 [auth.hook.before_user_created]
 enabled = true
-uri = "https://<ref>.supabase.co/functions/v1/before-user-created-hook"
+uri = "https://<project-ref>.supabase.co/functions/v1/before-user-created-hook"
 secrets = "env(BEFORE_USER_CREATED_HOOK_SECRET)"
 ```
 
-Enable **Sign In / Providers → Phone**. Auth refuses every phone request with
-`phone_provider_disabled` otherwise, before any hook runs. If the dashboard insists on an
-SMS provider, pick any and leave placeholder credentials: with the Send SMS hook enabled,
-Auth hands messages to the hook instead. The same through the Management API:
-`PATCH /v1/projects/<ref>/config/auth` with `{"external_phone_enabled": true}`.
+</details>
 
-Keep **Attack Protection → CAPTCHA off** for the project. The gateway verifies Turnstile
-itself, and a project-level captcha would verify the same single-use token again and
-reject every web login.
+## Step 5 · Add your secrets
 
-## 5. Set the secrets
+Copy the example file, fill it in, and upload it. The example explains where each value comes from.
 
 ```bash
-cp supabase/functions/.env.example supabase/functions/.env   # git-ignored; fill it in
+cp supabase/functions/.env.example supabase/functions/.env
 supabase secrets set --env-file supabase/functions/.env
 ```
 
-The example file explains where each value comes from. Do not add `SUPABASE_*`
-variables: Supabase injects them, and the CLI refuses names with that prefix.
+> [!WARNING]
+> `supabase/functions/.env` holds real secrets and is ignored by git. Never commit it. Do not add `SUPABASE_*` variables to it either: Supabase provides them.
 
-Web-only project? Add `OTP_GUARD_MOBILE=off`. No web app? Leave
-`OTP_GUARD_ALLOWED_ORIGINS` empty and every web request is refused. Every variable is
-listed in [configuration.md](configuration.md#environment-variables).
+Two settings depend on your app:
 
-## 6. Route the client through the gateway
+- **Web only?** Add `OTP_GUARD_MOBILE=off`. The mobile path has no captcha, so close it if you do not use it.
+- **No web app?** Leave `OTP_GUARD_ALLOWED_ORIGINS` empty, and every web request is refused.
+
+Every variable is listed in [Configuration](configuration.md#3-set-the-environment-variables).
+
+## Step 6 · Connect your app
+
+Install the client helper:
 
 ```bash
 npm install @otp-guard/client
 ```
 
-Until the package is on npm, copy the single file instead. It has no dependencies:
+> [!NOTE]
+> Until the package is on npm, copy its single file, which has no dependencies:
+> `cp packages/client/src/index.ts <app>/src/lib/otp-guard.ts`
 
-```bash
-cp packages/client/src/index.ts <app>/src/lib/otp-guard.ts
-```
-
-Web ([full example](../examples/nextjs/supabase.ts), [Turnstile widget](../examples/nextjs/turnstile.ts)):
+Pass it to supabase-js as its `fetch`. On the web:
 
 ```ts
+import { createClient } from "@supabase/supabase-js"
+import { browserDeviceId, createOtpGuardFetch } from "@otp-guard/client"
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   global: {
     fetch: createOtpGuardFetch({ supabaseUrl: SUPABASE_URL, platform: "web", getDeviceId: browserDeviceId() }),
   },
 })
 
-await supabase.auth.signInWithOtp({ phone, options: { captchaToken } })  // Turnstile token
+// Unchanged app code, plus the Turnstile token on the web:
+await supabase.auth.signInWithOtp({ phone, options: { captchaToken } })
 ```
 
-React Native / Expo: see [examples/expo/supabase.ts](../examples/expo/supabase.ts).
+Full examples: [Next.js](../examples/nextjs/supabase.ts) · [Turnstile widget](../examples/nextjs/turnstile.ts) · [Expo / React Native](../examples/expo/supabase.ts)
 
-Nothing else in your app changes. Email OTP, password sign-in, OAuth and every non-Auth
-request go out untouched.
+Only the requests that send a code by phone go through the gateway: `signInWithOtp`, `signUp`, `resend`, phone changes, `reauthenticate` and MFA phone challenges. Everything else, including email login and `verifyOtp`, goes straight to Supabase as before.
 
-`supabase.auth.reauthenticate()` and MFA phone challenges (`mfa.challenge` on a phone
-factor) also send SMS through the hook, so the client routes them through the gateway
-too. The gateway asks Auth, with the user's own session, which number will be texted,
-and issues a permit for it. Email reauthentication and TOTP challenges are forwarded
-without a permit.
+## Step 7 · Check that it works
 
-## 7. Verify
+**Check the setup.** Copy `.env.verify.example` to `.env.verify` (also ignored by git), fill in your project URL and keys, and run the checker. It sends no SMS.
 
 ```bash
-cp .env.verify.example .env.verify    # git-ignored; URL, anon key, service role key, access token
+cp .env.verify.example .env.verify
 supabase secrets set OTP_GUARD_DIAGNOSTICS=true
-node --env-file=.env.verify scripts/verify.mjs
+npm run verify
 supabase secrets unset OTP_GUARD_DIAGNOSTICS
 ```
 
-It checks that the migration is applied and configured, that API roles cannot call the
-entry points, that a forged `X-Forwarded-For` does not reach the gateway, and (with an
-access token) that the phone provider and both hooks are enabled and the project
-captcha is off. It sends no SMS.
+It confirms that the migration is in place, that nobody can call its functions from the browser, that the gateway sees real IP addresses, and that the phone provider and both hooks are on.
 
-Then send one real code through the mobile path. This costs one message:
+**Send one real code.** This costs one message:
 
 ```bash
-node --env-file=.env.verify scripts/e2e-mobile.mjs +525512345678
+npm run e2e:mobile -- +525512345678
 ```
 
-It checks that a foreign number is refused for free, sends a code through the gateway
-and verifies the one you type, then calls `/auth/v1/otp` directly, skipping the
-gateway, and confirms that nothing is sent. Test the web path from your app, with
-Turnstile.
+It checks that a foreign number is refused for free, sends a code to your phone and verifies the one you type, then calls Supabase directly, skipping the gateway, and confirms that nothing is sent. Test the web path from your own app, with Turnstile.
 
-## Troubleshooting
+All green? You are protected. If something fails, see [Troubleshooting](troubleshooting.md).
 
-| Symptom | Cause |
-|---|---|
-| `phone_provider_disabled` | Phone sign-in is off. Step 4 |
-| CLI: "Your account does not have the necessary privileges" | The CLI is logged in to another account. `export SUPABASE_ACCESS_TOKEN=...` for the project's account, or `supabase login` |
-| `Service currently unavailable due to hook` | The provider rejected the message. The send-sms-hook log `provider rejected the message` has the provider's reason (for Bird, e.g. 402 `billing_error` is an empty wallet) |
-| `Unexpected status code returned from hook` | A hook answered with a non-200 status. otp-guard's hooks never do; check for an older hook still configured |
-| `Too many attempts` while testing | Your own limits working: repeated tests from one IP hit `signup.origin_per_30_minutes` or `phone.*`. On a test project: `TRUNCATE otp_guard.sends, otp_guard.permits, otp_guard.device_phones, otp_guard.signup_attempts;` |
-| `Please request a new code from the app.` | A client calling Auth directly: route it through `createOtpGuardFetch` |
-| Web: 403 right after enabling Turnstile | The siteverify hostname is not allowed. Cloudflare's test keys report their own hostname; add it to `OTP_GUARD_TURNSTILE_HOSTNAMES` while testing |
+---
 
-## Rolling out to existing clients
+## Rolling out to an app already in production
 
-Once the Send SMS hook is enabled, clients that still call Auth directly get
-`SEND_PERMIT_REQUIRED`. Ship the client change first, wait for adoption (OTA for Expo),
-then enable the hook. There is deliberately no "permit optional" mode: it would leave
-the direct path open for as long as it exists.
+Once the Send SMS hook is on, any client that still talks to Supabase directly gets *"Please request a new code from the app."* So:
+
+1. Ship the client change (step 6) first.
+2. Wait until most users have it. For Expo, that means the OTA update has been adopted.
+3. Then turn on the hooks (step 4).
+
+There is no "permit optional" mode on purpose: the side door would stay open for as long as it existed.
+
+## Next steps
+
+- [Tuning](tuning.md): set a spend ceiling that fits your traffic.
+- [Operations](operations.md): what to watch, and what to do during an incident.
