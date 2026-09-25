@@ -1,12 +1,13 @@
 // Throwaway PostgreSQL with the Supabase pieces the migration touches (roles and a stub
 // auth.users). Never connects to a real project and never sends SMS.
-import { readFile, mkdtemp, rm } from 'node:fs/promises'
+import { readFile, readdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import EmbeddedPostgres from 'embedded-postgres'
 import pg from 'pg'
 
-const MIGRATION = new URL('../../supabase/migrations/20260926000000_otp_guard.sql', import.meta.url)
+// Every migration, in filename order, exactly as `supabase db push` applies them.
+const MIGRATIONS = new URL('../../supabase/migrations/', import.meta.url)
 
 export async function startDatabase(port) {
   const directory = await mkdtemp(join(tmpdir(), 'otp-guard-pg-'))
@@ -26,7 +27,9 @@ export async function startDatabase(port) {
     CREATE SCHEMA auth;
     CREATE TABLE auth.users (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), phone text UNIQUE,
       phone_confirmed_at timestamptz, created_at timestamptz DEFAULT now());`)
-  await pool.query(await readFile(MIGRATION, 'utf8'))
+  for (const file of (await readdir(MIGRATIONS)).filter(f => f.endsWith('.sql')).sort()) {
+    await pool.query(await readFile(new URL(file, MIGRATIONS), 'utf8'))
+  }
 
   async function stop() {
     await pool.end()

@@ -122,7 +122,7 @@ npm run typecheck
 npm run smoke:deno  # starts each function in Deno (needs deno installed)
 ```
 
-The database tests run on a throwaway PostgreSQL: nothing touches a real project and no SMS is sent. CI runs everything on every push and pull request. To report a vulnerability, see [SECURITY.md](SECURITY.md).
+The database tests run on a throwaway PostgreSQL: nothing touches a real project and no SMS is sent. CI runs everything on every push and pull request. What changed in each version is in the [changelog](CHANGELOG.md), and how versions are shipped is in [RELEASING.md](RELEASING.md). To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## License
 
