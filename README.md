@@ -1,14 +1,20 @@
 <div align="center">
 
-<img src="docs/images/cover.webp" width="100%" alt="Supabase OTP Guard: stop SMS pumping on Supabase phone login. Your app goes through OTP Guard to Supabase Auth; an attacker without a permit is refused, and zero messages are sent.">
+# supabase-otp-guard
 
-**No permit → no SMS → no bill.**
+**Stop SMS pumping on Supabase phone login.**
+
+No permit → no SMS → no bill.
 
 [![CI](https://github.com/m4st3rmiau/supabase-otp-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/m4st3rmiau/supabase-otp-guard/actions/workflows/ci.yml)
 ![Status](https://img.shields.io/badge/status-0.1%20pre--release-orange)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 
 [Quickstart](docs/quickstart.md) · [How it works](docs/architecture.md) · [Documentation](docs/README.md)
+
+<br>
+
+<img src="docs/images/cover.webp" width="100%" alt="Supabase OTP Guard: stop SMS pumping on Supabase phone login. Your app goes through OTP Guard to Supabase Auth; an attacker without a permit is refused, and zero messages are sent.">
 
 </div>
 
