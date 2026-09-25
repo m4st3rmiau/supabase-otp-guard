@@ -111,4 +111,6 @@ The last row is deliberate: if a provider error gave the quota back, an attacker
 
 Supabase Auth only passes a hook's error on to the app when the hook answers **HTTP 200** with `{"error": {"http_code": 429, "message": "..."}}` in the body. Any other status turns into a generic *Unexpected status code* error, and 429 or 503 make Auth retry the hook, which can never succeed here because the permit is already used. So both hooks always answer 200, and requests that do not come from Auth get a plain 401.
 
+The `http_code` becomes the status of Auth's answer, and Supabase's edge re-runs the whole request, hooks included, whenever Auth answers with a 5xx. That suits a database that did not answer, reported as 503: the permit was not used yet, so the rerun can succeed. A provider failure happens after the permit is used, so it is reported as **424** instead: a rerun could only fail again, with the wrong message and one more signup attempt counted.
+
 </details>

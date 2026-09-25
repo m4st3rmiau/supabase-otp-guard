@@ -60,6 +60,10 @@ supabase functions deploy before-user-created-hook --no-verify-jwt
 
 `--no-verify-jwt` is intentional. The gateway is a public endpoint that runs its own checks, and the hooks verify the signature Supabase Auth puts on every hook call.
 
+In **Edge Functions**, you should now see all three:
+
+![The three otp-guard functions listed in Edge Functions](images/edge-functions.webp)
+
 <details>
 <summary>Prefer <code>config.toml</code>?</summary>
 
@@ -78,16 +82,39 @@ verify_jwt = false
 
 ## Step 4 · Turn on the Auth settings
 
-In the Supabase dashboard, under **Authentication**:
+Three settings, all in the Supabase dashboard under **Authentication**. Do them in this order.
 
-1. **Sign In / Providers → Phone → Enable.** If the dashboard asks for an SMS provider, choose any and leave placeholder values: with the hook enabled, Auth hands every message to the hook instead.
-2. **Hooks → Send SMS hook → HTTPS**, pointing to
-   `https://<project-ref>.supabase.co/functions/v1/send-sms-hook`.
-   Click **Generate secret** and keep it for step 5.
-3. **Hooks → Before User Created hook → HTTPS**, pointing to
-   `https://<project-ref>.supabase.co/functions/v1/before-user-created-hook`.
-   Generate and keep this secret too.
-4. **Attack Protection → CAPTCHA** must stay **off**. The gateway checks Turnstile itself; a second check would reject every web login.
+### 4a. Add the two hooks
+
+Open **Auth Hooks → Add hook** and add each one as an **HTTPS endpoint**:
+
+| Hook | Endpoint |
+|---|---|
+| **Send SMS hook** | `https://<project-ref>.supabase.co/functions/v1/send-sms-hook` |
+| **Before User Created hook** | `https://<project-ref>.supabase.co/functions/v1/before-user-created-hook` |
+
+For each one, click **Generate secret** and keep it: you will need both in step 5. When you are done, both show as **Enabled**:
+
+![Auth Hooks with the Send SMS hook and the Before User Created hook enabled](images/auth-hooks.webp)
+
+### 4b. Turn on phone sign-in
+
+Open **Sign In / Providers → Phone**:
+
+![Sign In / Providers with Phone enabled](images/phone-provider-list.webp)
+
+Switch on **Enable Phone provider** and save. Because the Send SMS hook is already on, Supabase disables the SMS provider settings and uses the hook instead, so leave those fields empty:
+
+<p align="center">
+  <img src="images/phone-provider-panel.webp" width="600" alt="The Phone panel: SMS provider settings are disabled while the SMS hook is enabled">
+</p>
+
+> [!TIP]
+> Keep **SMS OTP Expiry** in the same panel equal to `BIRD_SMS_TTL_MINUTES`, since Bird's template tells users how long the code lasts.
+
+### 4c. Keep the project captcha off
+
+**Attack Protection → CAPTCHA** must stay **off**. The gateway checks Turnstile itself, and a second check of the same token would reject every web login.
 
 <details>
 <summary>Prefer <code>config.toml</code>?</summary>
@@ -172,6 +199,14 @@ supabase secrets unset OTP_GUARD_DIAGNOSTICS
 
 It confirms that the migration is in place, that nobody can call its functions from the browser, that the gateway sees real IP addresses, and that the phone provider and both hooks are on.
 
+**Watch it stop an attack.** Also free, no SMS:
+
+```bash
+npm run demo:attack
+```
+
+It tries two attacks: a code to a country you do not serve, and a call straight to Supabase that skips your app. Both should be refused, and it should end with `Messages sent: 0`.
+
 **Send one real code.** This costs one message:
 
 ```bash
@@ -179,6 +214,8 @@ npm run e2e:mobile -- +525512345678
 ```
 
 It checks that a foreign number is refused for free, sends a code to your phone and verifies the one you type, then calls Supabase directly, skipping the gateway, and confirms that nothing is sent. Test the web path from your own app, with Turnstile.
+
+If your provider does not deliver (an empty wallet, an unapproved template), the run still proves otp-guard's part: it confirms that the permit was used and exactly one send was authorized, reports the provider as a `WARN`, and goes on to the direct-call test. The provider's own reason is in the send-sms-hook log.
 
 All green? You are protected. If something fails, see [Troubleshooting](troubleshooting.md).
 

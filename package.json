@@ -20,7 +20,8 @@
     "verify": "node --env-file-if-exists=.env.verify scripts/verify.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "smoke:deno": "node scripts/smoke-deno.mjs",
-    "e2e:mobile": "node --env-file-if-exists=.env.verify scripts/e2e-mobile.mjs"
+    "e2e:mobile": "node --env-file-if-exists=.env.verify scripts/e2e-mobile.mjs",
+    "demo:attack": "node --env-file-if-exists=.env.verify scripts/demo-attack.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.2",

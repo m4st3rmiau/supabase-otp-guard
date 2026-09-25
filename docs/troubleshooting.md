@@ -6,12 +6,13 @@ Most problems show up as an error in your app or in the Edge Function logs (**Da
 
 | Message | What it means | Fix |
 |---|---|---|
-| `phone_provider_disabled` | Phone sign-in is off, so Supabase refuses before any hook runs. | Turn on **Authentication → Sign In / Providers → Phone** ([Quickstart, step 4](quickstart.md#step-4--turn-on-the-auth-settings)). |
+| `phone_provider_disabled` | Phone sign-in is off, so Supabase refuses before any hook runs. | Turn on **Authentication → Sign In / Providers → Phone** ([Quickstart, step 4b](quickstart.md#4b-turn-on-phone-sign-in)). |
 | *Please request a new code from the app.* | A client called Supabase directly, without a permit. | Route it through `createOtpGuardFetch` ([step 6](quickstart.md#step-6--connect-your-app)). |
 | *This number can't receive verification codes.* | The country is not allowed, or the number is blocklisted. | Add the country to `otp_guard.allowed_destinations` ([Configuration](configuration.md#2-choose-your-countries)). |
 | *Too many attempts. Please try again later.* | A limit was reached. While testing, it is usually your own repeated attempts. | See [Too many attempts while testing](#too-many-attempts-while-testing). |
 | *We couldn't verify this request.* | Web request without a valid Turnstile token, or from an origin that is not allowed. | Check `OTP_GUARD_ALLOWED_ORIGINS` and [Turnstile](#turnstile-fails-on-the-web). |
 | `Service currently unavailable due to hook` | The SMS provider refused the message. | Look for `provider rejected the message` in the **send-sms-hook** logs: it includes the provider's reason. |
+| `WARN the provider did not deliver` in `e2e:mobile` | otp-guard authorized the send; the provider refused it. | Read `provider rejected the message` in the **send-sms-hook** log ([Provider errors](#provider-errors-bird)). |
 | `Unexpected status code returned from hook` | A hook answered in a format Supabase does not relay. otp-guard's hooks never do. | Check that no older hook is still configured in **Authentication → Hooks**. |
 
 ## Too many attempts while testing

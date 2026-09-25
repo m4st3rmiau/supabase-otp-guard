@@ -45,7 +45,7 @@ These are true on Supabase today. `npm run verify` checks the ones that can be c
 
 1. **The gateway sees the caller's real IP address, and the caller cannot fake it.** Checked by `verify`. If this ever breaks, every IP-based limit can be bypassed.
 2. **The Send SMS hook is not told the caller's IP address.** That is why the permit exists. If Supabase ever adds it, nothing breaks.
-3. **Hook calls are signed** with the secret you configured, and Supabase only passes a hook's error on to your app when the hook answers HTTP 200 with the error in the body. Both hooks always do.
+3. **Hook calls are signed** with the secret you configured, and Supabase only passes a hook's error on to your app when the hook answers HTTP 200 with the error in the body. Both hooks always do. Supabase re-runs a request when Auth answers with a 5xx, so otp-guard only uses 5xx where a rerun can help.
 4. **Supabase stores each phone number once, without the `+`.** The unverified-numbers rule relies on it.
 
 ## Data it keeps

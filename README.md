@@ -37,7 +37,13 @@ flowchart LR
     hook -- no --> no2[Nothing sent]
 ```
 
-Calling Supabase directly, skipping your app, gets an attacker nothing.
+Calling Supabase directly, skipping your app, gets an attacker nothing. Here are both attacks against a live project:
+
+<p align="center">
+  <img src="docs/images/demo-attack.svg" width="720" alt="Terminal running npm run demo:attack: a code to the Philippines is refused by the gateway, a direct call to Supabase Auth is refused by the Send SMS hook, and zero messages are sent">
+</p>
+
+Run it on your own project with `npm run demo:attack`. It costs nothing.
 
 ## What you get
 
@@ -87,7 +93,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 ## Status
 
 > [!IMPORTANT]
-> **0.1, pre-release.** The code is tested against a real PostgreSQL, in Node and in Deno, and it has been deployed on a live Supabase project, where the core promise holds: a request without a permit is refused and nothing is sent. Delivery through Bird from this repository has not been confirmed yet. Try it on a staging project first.
+> **0.1, pre-release.** Tested against a real PostgreSQL, in Node and in Deno, and run end to end on a live Supabase project: the gateway issues the permit, both hooks run, the provider is called and its answer is handled, and a request without a permit is refused with nothing sent. The test provider wallet was empty, so that run delivered no SMS; the same Bird integration delivers in production elsewhere. Try it on a staging project first.
 
 It started as the protection of a production app that was hit by real SMS pumping. This repository is a clean rewrite of that system with every threshold made configurable; the `strict` preset keeps the values that ran in production.
 

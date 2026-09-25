@@ -33,10 +33,16 @@ export function rejection(reason: string | null): Rejection {
         status: 429,
         message: "We already sent codes to other numbers from this device. Verify one of them or try again tomorrow.",
       }
+    // Supabase's edge re-runs the whole Auth request when Auth answers with any 5xx
+    // (verified: 502 and 503 both re-run it, hooks included). That is fine for a database
+    // that did not answer, since the permit was not used yet. A provider failure happens
+    // after the permit is used, so the rerun can only fail again, with the wrong message
+    // and one more signup attempt counted. 424 (Failed Dependency) is not retried.
     case "ORIGIN_UNAVAILABLE":
     case "UNAVAILABLE":
-    case "PROVIDER_ERROR":
       return { status: 503, message: TRY_LATER }
+    case "PROVIDER_ERROR":
+      return { status: 424, message: TRY_LATER }
     default:
       return { status: 429, message: TOO_MANY }
   }

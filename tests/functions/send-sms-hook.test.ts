@@ -85,7 +85,8 @@ test("a non-UUID user id is not forwarded as an account", async () => {
 
 test("provider failures and rate limits are relayed, never retried by Auth", async () => {
   const failed = setup({ delivery: { ok: false, rateLimited: false, detail: { status: 500 } } })
-  assert.equal(await outcome(await failed.handle(await signedRequest(payload()))), 503)
+  assert.equal(await outcome(await failed.handle(await signedRequest(payload()))), 424,
+    "never 5xx: Supabase re-runs the request on any 5xx, and the used permit makes the rerun fail")
 
   const limited = setup({ delivery: { ok: false, rateLimited: true, retryAfter: "12" } })
   const response = await limited.handle(await signedRequest(payload()))
