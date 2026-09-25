@@ -1,10 +1,8 @@
 <div align="center">
 
-# supabase-otp-guard
+<img src="docs/images/cover.webp" width="100%" alt="Supabase OTP Guard: stop SMS pumping on Supabase phone login. Your app goes through OTP Guard to Supabase Auth; an attacker without a permit is refused, and zero messages are sent.">
 
-**Stop SMS pumping on Supabase phone login.**
-
-No permit → no SMS → no bill.
+**No permit → no SMS → no bill.**
 
 [![CI](https://github.com/m4st3rmiau/supabase-otp-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/m4st3rmiau/supabase-otp-guard/actions/workflows/ci.yml)
 ![Status](https://img.shields.io/badge/status-0.1%20pre--release-orange)
@@ -123,3 +121,5 @@ The database tests run on a throwaway PostgreSQL: nothing touches a real project
 ## License
 
 [MIT](LICENSE)
+
+<sub>Community project, not affiliated with or endorsed by Supabase.</sub>
